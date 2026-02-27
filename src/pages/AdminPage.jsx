@@ -1,13 +1,21 @@
-import AdminPanel from '../components/AdminPanel'
-import PhaseHeader from '../components/PhaseHeader'
-import TimerDisplay from '../components/TimerDisplay'
-import { useEventTimer } from '../hooks/useEventTimer'
 import { useState } from 'react'
+import AdminPanel from '../components/AdminPanel'
+import TimerDisplay from '../components/TimerDisplay'
+import { ROUNDS } from '../config/phases'
+import { useEventTimer } from '../hooks/useEventTimer'
 
 export default function AdminPage() {
   const { timerState, remainingSeconds, actions } = useEventTimer()
   const [authorized, setAuthorized] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
+  const roundMeta = ROUNDS[timerState.roundKey] ?? ROUNDS.round1
+  const statusLabel = timerState.status === 'running'
+    ? 'Running'
+    : timerState.status === 'paused'
+      ? 'Paused'
+      : timerState.status === 'ended'
+        ? 'Ended'
+        : 'Ready'
 
   const handleEnter = () => {
     if (passwordInput === 'ideatech2026') {
@@ -45,10 +53,17 @@ export default function AdminPage() {
 
   return (
     <div className="w-full max-w-5xl flex flex-col items-center z-10 gap-8">
-      <PhaseHeader
-        currentRound={timerState.currentRound}
-        status={timerState.status}
-      />
+      <div className="flex flex-col items-center gap-2 mb-2 text-center">
+        <h2 className="text-[#5EEAD4] text-xs md:text-sm tracking-[0.35em] font-bold uppercase">
+          {roundMeta.number}
+        </h2>
+        <h1 className="text-white text-xl md:text-3xl tracking-[0.08em] font-black uppercase">
+          {roundMeta.title}
+        </h1>
+        <p className="text-white/50 text-[10px] md:text-xs tracking-[0.2em] uppercase">
+          {statusLabel}
+        </p>
+      </div>
       <TimerDisplay remainingSeconds={remainingSeconds} status={timerState.status} />
       <AdminPanel timerState={timerState} remainingSeconds={remainingSeconds} actions={actions} />
     </div>
