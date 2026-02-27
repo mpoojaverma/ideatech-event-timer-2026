@@ -1,4 +1,4 @@
-export default function PhaseHeader({ currentRound, currentPhase, status }) {
+export default function PhaseHeader({ currentRound, status }) {
   const statusLabel = status === 'ended' ? 'Round Completed' : status === 'running' ? 'Running' : status === 'paused' ? 'Paused' : 'Ready'
 
   return (
@@ -7,7 +7,7 @@ export default function PhaseHeader({ currentRound, currentPhase, status }) {
         {currentRound}
       </h2>
       <h1 className="text-white text-xl md:text-3xl tracking-[0.08em] font-black uppercase">
-        {status === 'ended' ? 'Round Completed' : currentPhase}
+        {status === 'ended' ? 'Round Completed' : currentRound}
       </h1>
       <p className="text-white/50 text-[10px] md:text-xs tracking-[0.2em] uppercase">
         {statusLabel}

@@ -47,7 +47,6 @@ export default function AdminPage() {
     <div className="w-full max-w-5xl flex flex-col items-center z-10 gap-8">
       <PhaseHeader
         currentRound={timerState.currentRound}
-        currentPhase={timerState.currentPhase}
         status={timerState.status}
       />
       <TimerDisplay remainingSeconds={remainingSeconds} status={timerState.status} />

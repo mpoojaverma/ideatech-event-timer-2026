@@ -13,9 +13,9 @@ function AppRoutes() {
   useEffect(() => {
     console.log('[Router] Current route:', location.pathname)
     console.log('[Timer] Current timer state:', timerState.status)
-    console.log('[Timer] Current phase:', `${timerState.currentRound} - ${timerState.currentPhase}`)
+    console.log('[Timer] Current round:', timerState.currentRound)
     console.log('[Timer] Remaining:', formatTime(remainingSeconds))
-  }, [location.pathname, timerState.status, timerState.currentRound, timerState.currentPhase, remainingSeconds])
+  }, [location.pathname, timerState.status, timerState.currentRound, remainingSeconds])
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center py-12 px-6 relative overflow-hidden">

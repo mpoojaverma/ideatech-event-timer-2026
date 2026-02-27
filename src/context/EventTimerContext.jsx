@@ -1,5 +1,5 @@
 import { createContext, useEffect, useMemo, useState } from 'react'
-import { buildPhaseKey, defaultPhases, getPhaseSequence } from '../config/phases'
+import { defaultRounds, isValidRoundKey } from '../config/phases'
 
 const STORAGE_KEY = 'eventTimerState'
 const LEGACY_STORAGE_KEY = 'ideatech-event-timer-state-v2'
@@ -7,24 +7,38 @@ const MAX_DURATION_SECONDS = 24 * 60 * 60
 
 export const EventTimerContext = createContext(null)
 
-const getRoundAndPhase = (phaseKey) => {
-  const phase = defaultPhases[phaseKey] ?? defaultPhases.pre_event
-  return { currentRound: phase.round, currentPhase: phase.phase }
-}
+const normalizeDurationSeconds = (seconds) =>
+  Math.min(MAX_DURATION_SECONDS, Math.max(0, Math.floor(seconds)))
+
+const getRoundDurationSeconds = (roundKey) =>
+  normalizeDurationSeconds((defaultRounds[roundKey]?.durationMinutes ?? 30) * 60)
+
+const getInitialRoundKey = () => 'marks_idea'
 
 const createInitialState = () => {
-  const phaseKey = 'pre_event'
-  const { currentRound, currentPhase } = getRoundAndPhase(phaseKey)
+  const roundKey = getInitialRoundKey()
+  const durationSeconds = getRoundDurationSeconds(roundKey)
   return {
-    currentRound,
-    currentPhase,
-    phaseKey,
-    duration: defaultPhases[phaseKey].durationMinutes * 60,
+    roundKey,
+    currentRound: defaultRounds[roundKey].name,
+    duration: durationSeconds,
+    roundDuration: durationSeconds,
     startTime: null,
     isRunning: false,
     status: 'not-started',
-    includeIcebreaker: false,
   }
+}
+
+const getRoundKeyFromLegacy = (parsed) => {
+  if (isValidRoundKey(parsed.roundKey)) return parsed.roundKey
+  if (parsed.phaseKey === 'round1' || parsed.phaseKey === 'marks_idea') return 'marks_idea'
+  if (typeof parsed.phaseKey === 'string' && parsed.phaseKey.startsWith('round2')) return 'bug_slayer'
+  if (typeof parsed.currentRound === 'string') {
+    const value = parsed.currentRound.toLowerCase()
+    if (value.includes("mark") || value.includes('round 1')) return 'marks_idea'
+    if (value.includes('bug') || value.includes('round 2')) return 'bug_slayer'
+  }
+  return getInitialRoundKey()
 }
 
 const parseRawState = (raw) => {
@@ -33,30 +47,24 @@ const parseRawState = (raw) => {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return createInitialState()
 
-    const phaseKey = parsed.phaseKey && defaultPhases[parsed.phaseKey] ? parsed.phaseKey : 'pre_event'
-    const fallbackPhase = getRoundAndPhase(phaseKey)
-    const currentRound = typeof parsed.currentRound === 'string' && parsed.currentRound.trim()
-      ? parsed.currentRound
-      : fallbackPhase.currentRound
-    const currentPhase = typeof parsed.currentPhase === 'string' && parsed.currentPhase.trim()
-      ? parsed.currentPhase
-      : fallbackPhase.currentPhase
-
-    const sanitizedStatus = ['not-started', 'running', 'paused', 'ended'].includes(parsed.status) ? parsed.status : 'not-started'
-    const sanitizedStartTime = Number.isFinite(parsed.startTime) ? parsed.startTime : null
-    const sanitizedRunning = Boolean(parsed.isRunning) && sanitizedStartTime !== null && sanitizedStatus === 'running'
+    const roundKey = getRoundKeyFromLegacy(parsed)
+    const defaultDuration = getRoundDurationSeconds(roundKey)
+    const duration = Number.isFinite(parsed.duration) ? normalizeDurationSeconds(parsed.duration) : defaultDuration
+    const roundDuration = Number.isFinite(parsed.roundDuration)
+      ? normalizeDurationSeconds(parsed.roundDuration)
+      : Math.max(defaultDuration, duration)
+    const status = ['not-started', 'running', 'paused', 'ended'].includes(parsed.status) ? parsed.status : 'not-started'
+    const startTime = Number.isFinite(parsed.startTime) ? parsed.startTime : null
+    const isRunning = Boolean(parsed.isRunning) && startTime !== null && status === 'running'
 
     return {
-      currentRound,
-      currentPhase,
-      phaseKey,
-      duration: Number.isFinite(parsed.duration)
-        ? Math.min(MAX_DURATION_SECONDS, Math.max(0, Math.floor(parsed.duration)))
-        : defaultPhases[phaseKey].durationMinutes * 60,
-      startTime: sanitizedStartTime,
-      isRunning: sanitizedRunning,
-      status: sanitizedRunning ? 'running' : sanitizedStatus === 'running' ? 'paused' : sanitizedStatus,
-      includeIcebreaker: Boolean(parsed.includeIcebreaker),
+      roundKey,
+      currentRound: defaultRounds[roundKey].name,
+      duration,
+      roundDuration,
+      startTime,
+      isRunning,
+      status: isRunning ? 'running' : status === 'running' ? 'paused' : status,
     }
   } catch {
     return createInitialState()
@@ -71,14 +79,13 @@ const parseStoredState = () => {
 }
 
 const isSameTimerState = (a, b) =>
-  a.currentRound === b.currentRound
-  && a.currentPhase === b.currentPhase
-  && a.phaseKey === b.phaseKey
+  a.roundKey === b.roundKey
+  && a.currentRound === b.currentRound
   && a.duration === b.duration
+  && a.roundDuration === b.roundDuration
   && a.startTime === b.startTime
   && a.isRunning === b.isRunning
   && a.status === b.status
-  && a.includeIcebreaker === b.includeIcebreaker
 
 const getRemainingSeconds = (timerState, nowMs) => {
   if (!timerState.isRunning || !timerState.startTime) {
@@ -87,9 +94,6 @@ const getRemainingSeconds = (timerState, nowMs) => {
   const elapsedSeconds = Math.floor((nowMs - timerState.startTime) / 1000)
   return Math.max(0, Math.floor(timerState.duration - elapsedSeconds))
 }
-
-const normalizeDurationSeconds = (seconds) =>
-  Math.min(MAX_DURATION_SECONDS, Math.max(0, Math.floor(seconds)))
 
 export function EventTimerProvider({ children }) {
   const [timerState, setTimerState] = useState(() => createInitialState())
@@ -146,16 +150,16 @@ export function EventTimerProvider({ children }) {
     }
   }, [remainingSeconds, timerState.status])
 
-  const loadPhase = ({ round, level }) => {
-    const phaseKey = buildPhaseKey(round, level)
-    const phase = defaultPhases[phaseKey] ?? defaultPhases.pre_event
+  const selectRound = (roundKey) => {
+    if (!isValidRoundKey(roundKey)) return
+    const durationSeconds = getRoundDurationSeconds(roundKey)
     setNowMs(Date.now())
     setTimerState((prev) => ({
       ...prev,
-      phaseKey,
-      currentRound: phase.round,
-      currentPhase: phase.phase,
-      duration: normalizeDurationSeconds(phase.durationMinutes * 60),
+      roundKey,
+      currentRound: defaultRounds[roundKey].name,
+      duration: durationSeconds,
+      roundDuration: durationSeconds,
       startTime: null,
       isRunning: false,
       status: 'paused',
@@ -163,16 +167,15 @@ export function EventTimerProvider({ children }) {
   }
 
   const setDurationSeconds = (seconds) => {
+    const nextDuration = normalizeDurationSeconds(seconds)
     setNowMs(Date.now())
-    setTimerState((prev) => {
-      const nextDuration = normalizeDurationSeconds(seconds)
-      return {
-        ...prev,
-        duration: nextDuration,
-        startTime: prev.isRunning ? Date.now() : null,
-        status: nextDuration === 0 ? 'ended' : prev.isRunning ? 'running' : 'paused',
-      }
-    })
+    setTimerState((prev) => ({
+      ...prev,
+      duration: nextDuration,
+      roundDuration: nextDuration,
+      startTime: prev.isRunning ? Date.now() : null,
+      status: nextDuration === 0 ? 'ended' : prev.isRunning ? 'running' : 'paused',
+    }))
   }
 
   const start = () => {
@@ -205,53 +208,13 @@ export function EventTimerProvider({ children }) {
 
   const reset = () => {
     setNowMs(Date.now())
-    setTimerState((prev) => {
-      return {
-        ...prev,
-        duration: normalizeDurationSeconds(prev.duration),
-        startTime: null,
-        isRunning: false,
-        status: 'paused',
-      }
-    })
-  }
-
-  const moveToNextPhase = () => {
-    setNowMs(Date.now())
-    setTimerState((prev) => {
-      const sequence = getPhaseSequence(prev.includeIcebreaker)
-      const currentIndex = sequence.indexOf(prev.phaseKey)
-      const nextPhaseKey = currentIndex >= 0 && currentIndex < sequence.length - 1 ? sequence[currentIndex + 1] : prev.phaseKey
-      const phase = defaultPhases[nextPhaseKey] ?? defaultPhases.pre_event
-      return {
-        ...prev,
-        phaseKey: nextPhaseKey,
-        currentRound: phase.round,
-        currentPhase: phase.phase,
-        duration: normalizeDurationSeconds(phase.durationMinutes * 60),
-        startTime: null,
-        isRunning: false,
-        status: 'not-started',
-      }
-    })
-  }
-
-  const addSeconds = (secondsToAdd) => {
-    setNowMs(Date.now())
-    setTimerState((prev) => {
-      const baseRemaining = getRemainingSeconds(prev, Date.now())
-      const nextDuration = normalizeDurationSeconds(baseRemaining + Math.floor(secondsToAdd))
-      return {
-        ...prev,
-        duration: nextDuration,
-        startTime: prev.isRunning ? Date.now() : null,
-        status: nextDuration === 0 ? 'ended' : prev.isRunning ? 'running' : prev.status === 'not-started' ? 'not-started' : 'paused',
-      }
-    })
-  }
-
-  const setIncludeIcebreaker = (includeIcebreaker) => {
-    setTimerState((prev) => ({ ...prev, includeIcebreaker }))
+    setTimerState((prev) => ({
+      ...prev,
+      duration: normalizeDurationSeconds(prev.roundDuration),
+      startTime: null,
+      isRunning: false,
+      status: 'paused',
+    }))
   }
 
   const value = useMemo(
@@ -260,14 +223,11 @@ export function EventTimerProvider({ children }) {
       timerState,
       remainingSeconds,
       actions: {
-        loadPhase,
+        selectRound,
         setDurationSeconds,
         start,
         pause,
         reset,
-        moveToNextPhase,
-        addSeconds,
-        setIncludeIcebreaker,
       },
     }),
     [hydrated, timerState, remainingSeconds],
