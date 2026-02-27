@@ -13,7 +13,7 @@ const normalizeDurationSeconds = (seconds) =>
 const getRoundDurationSeconds = (roundKey) =>
   normalizeDurationSeconds((defaultRounds[roundKey]?.durationMinutes ?? 30) * 60)
 
-const getInitialRoundKey = () => 'marks_idea'
+const getInitialRoundKey = () => 'round1'
 
 const createInitialState = () => {
   const roundKey = getInitialRoundKey()
@@ -31,12 +31,12 @@ const createInitialState = () => {
 
 const getRoundKeyFromLegacy = (parsed) => {
   if (isValidRoundKey(parsed.roundKey)) return parsed.roundKey
-  if (parsed.phaseKey === 'round1' || parsed.phaseKey === 'marks_idea') return 'marks_idea'
-  if (typeof parsed.phaseKey === 'string' && parsed.phaseKey.startsWith('round2')) return 'bug_slayer'
+  if (parsed.phaseKey === 'round1' || parsed.phaseKey === 'marks_idea') return 'round1'
+  if (typeof parsed.phaseKey === 'string' && parsed.phaseKey.startsWith('round2')) return 'round2'
   if (typeof parsed.currentRound === 'string') {
     const value = parsed.currentRound.toLowerCase()
-    if (value.includes("mark") || value.includes('round 1')) return 'marks_idea'
-    if (value.includes('bug') || value.includes('round 2')) return 'bug_slayer'
+    if (value.includes("mark") || value.includes('round 1')) return 'round1'
+    if (value.includes('bug') || value.includes('round 2')) return 'round2'
   }
   return getInitialRoundKey()
 }
